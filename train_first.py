@@ -96,6 +96,8 @@ def main(config_path):
     F0_path = config.get('F0_path', False)
     pitch_extractor = load_F0_models(F0_path)
 
+    mos_predictor = torch.hub.load("tarepan/SpeechMOS:v1.2.0", "utmos22_strong", trust_repo=True)
+
     scheduler_params = {
         "max_lr": float(config['optimizer_params'].get('lr', 1e-4)),
         "pct_start": float(config['optimizer_params'].get('pct_start', 0.0)),
@@ -282,6 +284,7 @@ def main(config_path):
                 print('Time elasped:', time.time()-start_time)
 
         loss_test = 0
+        mos_test = 0
 
         _ = [model[key].eval() for key in model]
 
@@ -351,18 +354,24 @@ def main(config_path):
 
                 loss_mel = criterion(mel_rec, gt)
 
+                mos = mos_predictor(torch.from_numpy(mel_rec).unsqueeze(0), 24_000).cpu().item()
+                mos_test += mos
+
                 loss_test += loss_mel
                 iters_test += 1
 
         print('Epochs:', epoch + 1)
         logger.info('Validation mel loss: %.3f' % (loss_test / iters_test))
+        logger.info('Validation MOS: %.3f' % (mos_test / iters_test))
         print('\n\n\n')
 
+        writer.add_scalar('eval/MOS', mos_test / iters_test, epoch + 1)
         writer.add_scalar('eval/mel_loss', loss_test / iters_test, epoch + 1)
         attn_image = get_image(s2s_attn[0].cpu().numpy().squeeze())
         writer.add_figure('eval/attn', attn_image, epoch)
         mel_image = get_image(mel_rec[0].cpu().numpy().squeeze())
         writer.add_figure('eval/mel_rec', mel_image, epoch)
+        logger.info('Validation mel loss: %.3f' % (loss_test / iters_test))
 
         if epoch % saving_epoch == 0:
             if (loss_test / iters_test) < best_loss:

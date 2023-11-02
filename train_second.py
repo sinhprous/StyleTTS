@@ -152,6 +152,8 @@ def main(config_path):
     TMA_epoch = loss_params.TMA_epoch
     TMA_CEloss = loss_params.TMA_CEloss
 
+    mos_predictor = torch.hub.load("tarepan/SpeechMOS:v1.2.0", "utmos22_strong", trust_repo=True)
+
     for epoch in range(epochs):
         running_loss = 0
         start_time = time.time()
@@ -362,6 +364,7 @@ def main(config_path):
 
         loss_test = 0
         loss_align = 0
+        mos_test = 0
         _ = [model[key].eval() for key in model]
 
         with torch.no_grad():
@@ -451,13 +454,18 @@ def main(config_path):
 
                 loss_mel = criterion(mel_rec, gt)
 
+                mos = mos_predictor(torch.from_numpy(mel_rec).unsqueeze(0), 24_000).cpu().item()
+                mos_test += mos
+
                 loss_test += loss_mel
                 loss_align += loss_dur
                 iters_test += 1
 
         print('Epochs:', epoch + 1)
         print('Validation loss: %.3f, %.3f' % (loss_test / iters_test, loss_align / iters_test), '\n\n\n')
+        print('Validation MOS: ', mos_test / iters_test)
 
+        writer.add_scalar('eval/MOS', mos_test / iters_test, epoch + 1)
         writer.add_scalar('eval/mel_loss', loss_test / iters_test, epoch + 1)
         writer.add_scalar('eval/dur_loss', loss_align / iters_test, epoch + 1)
 
